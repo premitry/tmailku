@@ -95,7 +95,7 @@ export default function Home() {
 					<Zap className="text-primary" /> {branding?.appName || 'TMailku'}
 				</div>
 				<div className="flex items-center gap-2">
-					<a className="btn btn-ghost" href="/docs">API</a>
+					<a className="btn btn-ghost" href={(process.env.NEXT_PUBLIC_API_BASE || '') + '/docs'} target="_blank" rel="noreferrer">API</a>
 					<ThemeToggle />
 				</div>
 			</header>
