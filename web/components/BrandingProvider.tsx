@@ -9,11 +9,16 @@ export default function BrandingProvider({ onLoad }: { onLoad?: (b: Branding) =>
 		api
 			.branding()
 			.then((b) => {
-				const root = document.documentElement
-				root.style.setProperty('--color-primary', b.colors.primary)
-				root.style.setProperty('--color-secondary', b.colors.secondary)
-				root.style.setProperty('--color-tertiary', b.colors.tertiary)
 				if (b.appName) document.title = b.appName + ' — Temporary Mail'
+				if (b.faviconUrl) {
+					let link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null
+					if (!link) {
+						link = document.createElement('link')
+						link.rel = 'icon'
+						document.head.appendChild(link)
+					}
+					link.href = b.faviconUrl
+				}
 				onLoad?.(b)
 			})
 			.catch(() => {})

@@ -17,7 +17,8 @@ export interface Branding {
 	appName: string
 	logoUrl: string
 	faviconUrl: string
-	colors: { primary: string; secondary: string; tertiary: string }
+	heroTitle: string
+	heroSubtitle: string
 	defaultTheme: string
 	defaultLang: string
 	siteLocked: boolean
@@ -36,6 +37,16 @@ export interface EmailSummary {
 
 export const api = {
 	branding: () => req<Branding>('/api/branding'),
+	upload: async (file: File): Promise<{ url: string }> => {
+		const fd = new FormData()
+		fd.append('file', file)
+		const res = await fetch(API_BASE + '/api/admin/upload', { method: 'POST', credentials: 'include', body: fd })
+		if (!res.ok) {
+			const d = await res.json().catch(() => ({}))
+			throw new Error((d as any).error || 'upload gagal')
+		}
+		return res.json()
+	},
 	domains: () => req<{ domains: string[] }>('/api/domains'),
 	createAddress: (body: { domain?: string; local?: string; ttlMinutes?: number }) =>
 		req<{ address: string; ownerToken: string; expiresAt: number; domain: string }>('/api/address', {

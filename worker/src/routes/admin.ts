@@ -285,6 +285,20 @@ adminRoutes.put('/settings', async (c) => {
 	return c.json({ ok: true })
 })
 
+// ---------- UPLOAD ASET BRANDING (logo/favicon) ----------
+adminRoutes.post('/upload', async (c) => {
+	const form = await c.req.formData().catch(() => null)
+	const file = form?.get('file')
+	if (!(file instanceof File)) return c.json({ error: 'file tidak ditemukan' }, 400)
+	if (file.size > 2 * 1024 * 1024) return c.json({ error: 'file terlalu besar (maks 2MB)' }, 400)
+	const id = uid('brand')
+	const buf = new Uint8Array(await file.arrayBuffer())
+	await c.env.R2.put('brand/' + id, buf, { httpMetadata: { contentType: file.type || 'application/octet-stream' } })
+	const origin = new URL(c.req.url).origin
+	await addLog(c.env, 'info', 'settings', 'aset branding diupload')
+	return c.json({ url: origin + '/api/asset/' + id })
+})
+
 // ---------- API KEYS ----------
 adminRoutes.get('/api-keys', async (c) => {
 	const { results } = await c.env.DB.prepare(
