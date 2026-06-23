@@ -233,19 +233,39 @@ function MailSources() {
 
 function Appearance() {
 	const [s, setS] = useState<Record<string, string>>({})
+	const [busy, setBusy] = useState('')
 	useEffect(() => { api.settings('branding').then((r) => setS(flat(r.settings))).catch(() => {}) }, [])
-	const set = (k: string, v: string) => setS({ ...s, [k]: v })
+	const set = (k: string, v: string) => setS((p) => ({ ...p, [k]: v }))
+	async function upload(key: string, file?: File | null) {
+		if (!file) return
+		setBusy(key)
+		try {
+			const { url } = await api.upload(file)
+			set(key, url)
+		} catch (e: any) { alert(e.message) } finally { setBusy('') }
+	}
 	return (
 		<Card>
 			<div className="space-y-3">
 				<Field label="Nama Aplikasi"><input value={s.app_name || ''} onChange={(e) => set('app_name', e.target.value)} /></Field>
-				<Field label="Logo URL"><input value={s.logo_url || ''} onChange={(e) => set('logo_url', e.target.value)} /></Field>
-				<Field label="Favicon URL"><input value={s.favicon_url || ''} onChange={(e) => set('favicon_url', e.target.value)} /></Field>
-				<div className="grid grid-cols-3 gap-2">
-					<Field label="Primary"><input type="color" value={s.color_primary || '#6366f1'} onChange={(e) => set('color_primary', e.target.value)} /></Field>
-					<Field label="Secondary"><input type="color" value={s.color_secondary || '#22c55e'} onChange={(e) => set('color_secondary', e.target.value)} /></Field>
-					<Field label="Tertiary"><input type="color" value={s.color_tertiary || '#f59e0b'} onChange={(e) => set('color_tertiary', e.target.value)} /></Field>
-				</div>
+				<Field label="Judul Hero"><input value={s.hero_title || ''} placeholder="Email Sementara, Instan & Privat" onChange={(e) => set('hero_title', e.target.value)} /></Field>
+				<Field label="Subjudul Hero"><textarea rows={2} value={s.hero_subtitle || ''} placeholder="Terima email tanpa registrasi. Auto-hapus otomatis." onChange={(e) => set('hero_subtitle', e.target.value)} /></Field>
+				<Field label="Logo (upload gambar)">
+					<div className="flex items-center gap-3">
+						{s.logo_url && <img src={s.logo_url} alt="logo" className="h-10 w-10 object-contain rounded glass p-1" />}
+						<input type="file" accept="image/*" className="!w-auto" onChange={(e) => upload('logo_url', e.target.files?.[0])} />
+						{busy === 'logo_url' && <span className="text-sm opacity-60">Mengupload...</span>}
+						{s.logo_url && <button className="btn btn-ghost" onClick={() => set('logo_url', '')}><Trash2 size={14} /></button>}
+					</div>
+				</Field>
+				<Field label="Favicon (upload gambar)">
+					<div className="flex items-center gap-3">
+						{s.favicon_url && <img src={s.favicon_url} alt="favicon" className="h-8 w-8 object-contain rounded glass p-1" />}
+						<input type="file" accept="image/*" className="!w-auto" onChange={(e) => upload('favicon_url', e.target.files?.[0])} />
+						{busy === 'favicon_url' && <span className="text-sm opacity-60">Mengupload...</span>}
+						{s.favicon_url && <button className="btn btn-ghost" onClick={() => set('favicon_url', '')}><Trash2 size={14} /></button>}
+					</div>
+				</Field>
 				<div className="grid grid-cols-2 gap-2">
 					<Field label="Tema Default"><select value={s.default_theme || 'dark'} onChange={(e) => set('default_theme', e.target.value)}><option value="dark">Gelap</option><option value="light">Terang</option></select></Field>
 					<Field label="Bahasa Default"><select value={s.default_lang || 'id'} onChange={(e) => set('default_lang', e.target.value)}><option value="id">Indonesia</option><option value="en">English</option></select></Field>
@@ -326,7 +346,7 @@ function ApiKeys() {
 						</div>
 					</div>
 				))}
-				<a className="btn btn-ghost mt-3" href="/docs">Lihat Dokumentasi API</a>
+				<a className="btn btn-ghost mt-3" href={(process.env.NEXT_PUBLIC_API_BASE || '') + '/docs'} target="_blank" rel="noreferrer">Lihat Dokumentasi API</a>
 			</Card>
 		</div>
 	)

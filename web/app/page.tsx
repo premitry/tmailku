@@ -92,7 +92,7 @@ export default function Home() {
 			{/* Header */}
 			<header className="flex items-center justify-between mb-8">
 				<div className="flex items-center gap-2 font-bold text-lg">
-					<Zap className="text-primary" /> {branding?.appName || 'TMailku'}
+					{branding?.logoUrl ? <img src={branding.logoUrl} alt="" className="h-7 w-7 object-contain" /> : <Zap className="text-primary" />} {branding?.appName || 'TMailku'}
 				</div>
 				<div className="flex items-center gap-2">
 					<a className="btn btn-ghost" href={(process.env.NEXT_PUBLIC_API_BASE || '') + '/docs'} target="_blank" rel="noreferrer">API</a>
@@ -102,8 +102,8 @@ export default function Home() {
 
 			{/* Hero */}
 			<section className="text-center mb-8">
-				<h1 className="text-4xl font-extrabold mb-3">Email Sementara, Instan & Privat</h1>
-				<p className="opacity-70 mb-4">Terima email tanpa registrasi. Auto-hapus otomatis.</p>
+				<h1 className="text-4xl font-extrabold mb-3">{branding?.heroTitle || 'Email Sementara, Instan & Privat'}</h1>
+				<p className="opacity-70 mb-4">{branding?.heroSubtitle || 'Terima email tanpa registrasi. Auto-hapus otomatis.'}</p>
 				<div className="flex gap-2 justify-center flex-wrap">
 					<span className="pill"><ShieldCheck size={14} /> Private</span>
 					<span className="pill"><Zap size={14} /> Real-time</span>
