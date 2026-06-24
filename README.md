@@ -12,7 +12,7 @@ Layanan **email sementara (disposable email)** yang berjalan penuh di **Cloudfla
 2. [Cara Kerja (Arsitektur)](#-cara-kerja-arsitektur)
 3. [Struktur Folder](#-struktur-folder)
 4. [Persiapan (Prasyarat)](#-persiapan-prasyarat)
-5. [Panduan Deploy Lengkap](#-panduan-deploy-lengkap-langkah-demi-langkah)
+5. [Deploy Langsung di Cloudflare (Tanpa Lokal)](#-deploy-langsung-di-cloudflare-tanpa-lokal)
 6. [Konfigurasi URL (paling sering bikin bingung)](#-konfigurasi-url-paling-sering-bikin-bingung)
 7. [Menjalankan Secara Lokal](#-menjalankan-secara-lokal-development)
 8. [Setup Pertama (Buat Admin)](#-setup-pertama-buat-admin)
@@ -109,106 +109,113 @@ tmailku/
 
 ## 🧰 Persiapan (Prasyarat)
 
-- **Node.js 18+** dan **npm**
 - **Akun Cloudflare** (gratis)
+- **Akun GitHub** (untuk fork repo & Connect to Git)
 - **Domain** yang sudah ditambahkan ke Cloudflare (untuk menerima email)
-- **Wrangler** (CLI Cloudflare) — sudah termasuk sebagai dependency, jalankan via `npx wrangler`
-
-Login ke Cloudflare sekali:
-```bash
-npx wrangler login
-```
+- (Opsional, hanya untuk cara CLI/lokal) **Node.js 18+** dan **npm**
 
 ---
 
-## 🚀 Panduan Deploy Lengkap (Langkah demi Langkah)
+## 🚀 Deploy Langsung di Cloudflare (Tanpa Lokal)
 
-### 1. Clone & install
-```bash
-git clone https://github.com/premitry/tmailku.git
-cd tmailku
-npm install          # sekali di root, install worker + web (npm workspaces)
-```
+> Metode yang **direkomendasikan** — semuanya lewat **GitHub + Dashboard Cloudflare**, tanpa install/clone/build apa pun di komputer.
 
-### 2. Buat resource Cloudflare (D1, KV, R2)
-```bash
-cd worker
+### 1. Fork repo
+Klik **Fork** di `https://github.com/premitry/tmailku` ke akun GitHub-mu. Semua pengeditan file nanti dilakukan lewat **editor web GitHub** (ikon ✏️).
 
-npx wrangler d1 create tmailku
-npx wrangler kv namespace create KV
-npx wrangler r2 bucket create tmailku-attachments
-```
-Masing-masing perintah mengeluarkan **ID**. Catat semuanya.
+### 2. Buat resource lewat Dashboard Cloudflare
+Di dashboard Cloudflare:
+- **D1**: Storage & Databases → **D1 SQL Database** → *Create* → nama `tmailku`. Catat **Database ID**.
+- **KV**: Storage & Databases → **KV** → *Create namespace* → nama `KV`. Catat **Namespace ID**.
+- **R2**: **R2 Object Storage** → *Create bucket* → nama `tmailku-attachments`.
 
-### 3. Isi `worker/wrangler.toml`
-Ganti semua placeholder dengan ID asli dari langkah 2:
+### 3. Isi `worker/wrangler.toml` lewat GitHub
+Buka `worker/wrangler.toml` di repo fork → **Edit (✏️)** → ganti placeholder dengan ID dari langkah 2 dan set URL website-mu, lalu **Commit changes**:
 ```toml
 [[d1_databases]]
 binding = "DB"
 database_name = "tmailku"
-database_id = "GANTI_DENGAN_D1_ID"        # dari `d1 create`
+database_id = "TEMPEL_D1_ID"
 
 [[kv_namespaces]]
 binding = "KV"
-id = "GANTI_DENGAN_KV_ID"                 # dari `kv namespace create`
+id = "TEMPEL_KV_ID"
 
 [[r2_buckets]]
 binding = "R2"
-bucket_name = "tmailku-attachments"       # nama bucket (bukan ID)
+bucket_name = "tmailku-attachments"
 
 [vars]
-APP_URL    = "https://vdey.website"       # URL WEBSITE/frontend kamu
-WEB_ORIGIN = "https://vdey.website"       # URL WEBSITE/frontend kamu
+APP_URL    = "https://vdey.website"   # URL WEBSITE/frontend kamu
+WEB_ORIGIN = "https://vdey.website"   # URL WEBSITE/frontend kamu
 ```
 > ⚠️ `APP_URL` & `WEB_ORIGIN` diisi **URL website (frontend)**, bukan URL Worker. Lihat [bagian URL](#-konfigurasi-url-paling-sering-bikin-bingung).
 
-### 4. Buat schema database
-```bash
-npm run db:init      # menjalankan schema.sql ke D1 remote
-```
+### 4. Deploy Worker (Connect to Git)
+Workers & Pages → **Create** → tab **Workers** → **Import a repository** (Connect to Git) → pilih repo fork-mu.
+- **Root directory**: `worker`
+- Cloudflare membaca `wrangler.toml` lalu **build + deploy otomatis** di server mereka (binding D1/KV/R2 ikut terpasang).
+- Catat URL Worker, mis. `https://tmailku.namakamu.workers.dev` → dipakai untuk `NEXT_PUBLIC_API_BASE`.
 
-### 5. Set secret JWT (untuk sesi admin)
-```bash
-npx wrangler secret put JWT_SECRET
-# masukkan string acak panjang, mis. hasil: openssl rand -hex 32
-```
+### 5. Buat tabel database (D1 Console) — pengganti `db:init`
+D1 → pilih database `tmailku` → tab **Console**. Buka `worker/schema.sql` di GitHub, **salin seluruh isinya**, tempel di console, lalu **Run**.
 
-### 6. Deploy Worker
-```bash
-npx wrangler deploy
-```
-Output menampilkan URL Worker, mis: `https://tmailku.namakamu.workers.dev`. **Catat URL ini** → dipakai untuk `NEXT_PUBLIC_API_BASE`.
+### 6. Set secret `JWT_SECRET`
+Worker → **Settings** → **Variables and Secrets** → *Add* → tipe **Secret**, nama `JWT_SECRET`, isi string acak panjang (mis. 32+ karakter dari password manager). Save & deploy.
 
-### 7. Hubungkan domain ke Email Routing
-Di dashboard Cloudflare → pilih domain → **Email → Email Routing**:
+### 7. Deploy Frontend (Cloudflare Pages, Connect to Git)
+Workers & Pages → **Create** → tab **Pages** → **Connect to Git** → pilih repo fork-mu.
+- **Root directory**: `web`
+- **Framework preset**: Next.js
+- **Environment variable**: `NEXT_PUBLIC_API_BASE = https://api.vdey.website` (URL Worker)
+- Cloudflare build Next.js di server mereka — **tanpa build lokal**.
+
+### 8. Hubungkan domain ke Email Routing
+Dashboard Cloudflare → pilih domain → **Email → Email Routing**:
 - Aktifkan Email Routing (otomatis menambah MX record).
 - Buat **catch-all rule** → **Send to a Worker** → pilih worker `tmailku`.
 
-Lalu daftarkan domain di dashboard admin (menu **Mail Sources**): tambahkan domain, pilih mode terima (**IMAP** dan/atau **Direct Routing**), lalu klik **Verify**.
-
-### 8. Deploy Frontend (folder `web/`)
-Pilih salah satu:
-
-**A. Cloudflare Pages (Connect to Git) — direkomendasikan**
-- Workers & Pages → Create → Pages → connect repo `premitry/tmailku`
-- Root directory: `web`, framework: **Next.js**
-- Environment variable: `NEXT_PUBLIC_API_BASE = https://api.vdey.website`
-
-**B. Upload manual (static export)**
-```bash
-cd web
-# tambahkan ke next.config.mjs: output: 'export', images: { unoptimized: true }
-echo NEXT_PUBLIC_API_BASE=https://api.vdey.website > .env.local
-npm run build        # hasil di folder web/out
-```
-Lalu Workers & Pages → Create → Pages → **Upload assets** → drag folder `web/out`.
-
-### 9. Pasang domain ke frontend
-Di project Pages → **Custom domains** → tambahkan `vdey.website`.
-(Worker cukup pakai subdomain `api.vdey.website`.)
+### 9. Pasang custom domain
+- Worker → **Settings → Domains & Routes** → tambah `api.vdey.website`.
+- Pages → **Custom domains** → tambah `vdey.website`.
 
 ### 10. Selesai → buka website
-Buka `https://vdey.website`. Pertama kali akan diarahkan ke **/setup** untuk membuat akun admin.
+Buka `https://vdey.website`. Pertama kali diarahkan ke **/setup** untuk membuat akun admin. Lalu daftarkan domain di **Admin → Mail Sources**, pilih mode terima (**IMAP** dan/atau **Direct Routing**), klik **Verify**.
+
+> 💡 **Update berikutnya cukup commit/push ke GitHub** — Cloudflare otomatis re-deploy Worker & Pages. Mau ubah binding/env? Edit `wrangler.toml` atau env di dashboard, CF rebuild sendiri.
+
+<details>
+<summary><b>Alternatif: deploy via CLI (wrangler) dari lokal</b></summary>
+
+```bash
+# 1. Clone & install
+git clone https://github.com/premitry/tmailku.git
+cd tmailku
+npm install          # npm workspaces (worker + web)
+
+# 2. Buat resource (catat tiap ID yang muncul)
+cd worker
+npx wrangler d1 create tmailku
+npx wrangler kv namespace create KV
+npx wrangler r2 bucket create tmailku-attachments
+```
+
+3. Tempel ID ke `worker/wrangler.toml` (`database_id`, KV `id`, `bucket_name`) dan set `APP_URL` / `WEB_ORIGIN` ke URL website.
+
+```bash
+# 4. Buat schema + secret, lalu deploy worker
+npm run db:init
+npx wrangler secret put JWT_SECRET   # string acak, mis. openssl rand -hex 32
+npx wrangler deploy
+
+# 5. Build & deploy frontend (static export) — opsional
+cd ../web
+# next.config.mjs: output: 'export', images: { unoptimized: true }
+echo NEXT_PUBLIC_API_BASE=https://api.vdey.website > .env.local
+npm run build        # hasil di web/out → upload ke Pages
+```
+
+</details>
 
 ---
 
@@ -359,27 +366,27 @@ curl -X POST https://api.vdey.website/api/v1/address \
 
 ## 🩺 Troubleshooting (Solusi Error Umum)
 
-**`Invalid uuid` saat `npm run db:init`**
-→ `database_id` di `wrangler.toml` masih placeholder. Jalankan `npx wrangler d1 create tmailku`, tempel UUID-nya, ulangi.
+**Schema gagal / tabel tidak ada**
+→ Pastikan kamu sudah menjalankan isi `worker/schema.sql` di **D1 → Console** (atau `npm run db:init` untuk cara CLI). Tanpa ini, login/setup akan error.
 
 **Login admin gagal / langsung ke-logout**
-→ `WEB_ORIGIN` tidak cocok dengan URL website (cek trailing slash / http vs https). Samakan persis lalu `npx wrangler deploy` ulang.
+→ `WEB_ORIGIN` tidak cocok dengan URL website (cek trailing slash / http vs https). Samakan persis lalu re-deploy worker.
 
 **Email tidak masuk**
 → Pastikan Email Routing aktif, ada catch-all rule **Send to Worker**, domain sudah **Verify** di admin & berstatus **aktif**. Untuk IMAP, cek kredensial via **Test Connection** dan pastikan polling aktif.
 
 **Frontend tidak bisa konek API**
-→ Cek `NEXT_PUBLIC_API_BASE` mengarah ke URL Worker yang benar (bukan URL website). Ingat: nilai `NEXT_PUBLIC_*` di-bake saat build, jadi rebuild frontend setelah mengubahnya.
+→ Cek `NEXT_PUBLIC_API_BASE` mengarah ke URL Worker yang benar (bukan URL website). Ingat: nilai `NEXT_PUBLIC_*` di-bake saat build, jadi rebuild frontend (atau re-deploy Pages) setelah mengubahnya.
 
-**Warning Wrangler out-of-date / `Assertion failed async.c` (Windows)**
+**Warning Wrangler out-of-date / `Assertion failed async.c` (Windows, khusus cara CLI)**
 → Cosmetic saja. Untuk menghilangkan: `npm install --save-dev wrangler@4`.
 
 ---
 
 ## ❓ FAQ
 
-**Apakah `npm install` cukup sekali?**
-Ya, di root karena memakai npm workspaces — sekali install untuk `worker` & `web`.
+**Apakah harus install apa pun di komputer?**
+Tidak. Pakai metode **Deploy Langsung di Cloudflare** (fork + Connect to Git) — semua build dijalankan Cloudflare. Node/npm hanya perlu kalau memilih cara CLI/lokal.
 
 **Apakah harus punya domain sendiri?**
 Untuk menerima email: ya, domain harus ada di Cloudflare. Untuk testing API, Worker dapat URL `*.workers.dev` gratis.
