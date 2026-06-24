@@ -291,6 +291,13 @@ Tiap domain adalah entitas utama. Saat menambah domain kamu memilih satu atau du
 
 Di halaman Edit Domain tersedia **Danger Zone** untuk menghapus domain (perlu mengetik ulang nama domain sebagai konfirmasi).
 
+### IMAP Profiles (reusable)
+Konfigurasi IMAP bisa dipilih dua cara saat **IMAP Mailbox** diaktifkan:
+- **Custom Configuration** (default) — isi host/port/username/password langsung di domain. Cocok untuk domain tunggal, tanpa harus membuat profile.
+- **Use Existing Profile** — pakai ulang sebuah **IMAP Profile** pada banyak domain agar tak perlu mengetik kredensial berulang.
+
+Setelah **Test Connection** berhasil pada mode custom, kamu bisa langsung **Save as Profile**. Submenu **Mail Sources → IMAP Profiles** menampilkan semua profile beserta jumlah domain yang memakainya ("Used by N domains"), dengan halaman Edit yang menampilkan **Linked Domains**. Perubahan profile otomatis disinkronkan ke semua domain terkait, dan profile **tidak bisa dihapus** selama masih dipakai domain. **Smart detection** akan memberi tahu bila konfigurasi custom identik dengan profile yang sudah ada.
+
 ---
 
 ## 🔌 REST API
@@ -321,6 +328,9 @@ POST   /api/admin/domains/imap/test     # test IMAP sebelum domain dibuat
 POST   /api/admin/domains/:id/imap/test # test IMAP domain tersimpan
 POST   /api/admin/domains/:id/imap/sync # sync sekarang
 POST   /api/admin/domains/:id/verify    # cek MX -> Cloudflare
+CRUD   /api/admin/imap-profiles         # reusable IMAP profile (dipakai banyak domain)
+POST   /api/admin/imap-profiles/:id/test # test koneksi profile
+POST   /api/admin/imap-profiles/check    # smart-detect profile identik (host+username)
 POST   /api/admin/upload                # upload logo/favicon ke R2
 CRUD   /api/admin/admins
 CRUD   /api/admin/settings              # branding, lock website, sistem
@@ -343,7 +353,7 @@ curl -X POST https://api.vdey.website/api/v1/address \
   -H "Authorization: Bearer tmk_xxxxxxxx"
 ```
 > API key dibuat di **Admin → API**, ditampilkan **sekali** saat dibuat — simpan baik-baik.
-> Catatan: IMAP dikelola **di dalam tiap domain** (Mail Sources). Endpoint `imap-accounts` lama sudah deprecated.
+> Catatan: IMAP dikelola **di dalam tiap domain** (Mail Sources), dengan opsi **reusable IMAP Profiles**. Endpoint `imap-accounts` lama sudah deprecated.
 
 ---
 
