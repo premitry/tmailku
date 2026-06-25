@@ -92,7 +92,7 @@ tmailku/
 │   │   ├── lib/            # util, auth, settings, otp, notify, apikeys, storage, dll
 │   │   ├── imap/           # client + fetcher IMAP
 │   │   └── routes/         # setup, public, apiv1, admin, branding
-│   ├── schema.sql          # skema database D1 (domains, imap_settings, dll)
+│   ├── schema.sql          # skema database D1 (opsional/advanced)
 │   ├── wrangler.toml       # konfigurasi Cloudflare (ISI ID-MU DI SINI)
 │   └── .dev.vars.example   # contoh secret lokal
 └── web/                    # === FRONTEND (Next.js 15) ===
@@ -259,24 +259,29 @@ Contoh value bisa dibuat dari password manager. Jangan taruh value ini di README
 
 Setelah save, lakukan deploy ulang kalau Cloudflare meminta.
 
-### 6. Buat tabel D1 dari `schema.sql`
+### 6. Database otomatis dibuat oleh Worker
 
-Cloudflare → **D1** → pilih database `tmailku` → **Console / Studio**.
+Untuk pemula, **tidak perlu paste SQL manual** ke D1 Console.
 
-Cara paling aman:
+Setelah Worker berhasil deploy dan binding `DB` sudah terhubung ke D1, buka URL ini sekali di browser:
 
-1. Buka file `worker/schema.sql` di GitHub.
-2. Klik tombol **Raw**.
-3. Tekan `Ctrl + A`, lalu `Ctrl + C`.
-4. Kembali ke D1 Console.
-5. Klik editor query.
-6. Tekan `Ctrl + A` untuk menghapus isi lama.
-7. Paste seluruh isi `schema.sql`.
-8. Pastikan bagian paling atas dimulai dari `CREATE TABLE IF NOT EXISTS domains`.
-9. Klik **Run / Execute**.
+```txt
+https://URL-WORKER-KAMU/api/setup/status
+```
 
-> Jika muncul `Requests without any query are not supported`, berarti editor query kosong atau teks SQL belum kepaste.
-> Jika muncul `no such table: settings`, berarti kamu hanya menjalankan bagian `INSERT INTO settings` tanpa menjalankan `CREATE TABLE settings` di bagian atas. Jalankan ulang seluruh `schema.sql` dari awal.
+Contoh:
+
+```txt
+https://tmailku.namakamu.workers.dev/api/setup/status
+```
+
+Worker akan otomatis membuat tabel D1 yang diperlukan (`domains`, `admins`, `settings`, `emails`, dan lainnya). Kalau berhasil, akan muncul:
+
+```json
+{"setupCompleted":false}
+```
+
+> `worker/schema.sql` tetap disediakan untuk pengguna advanced/CLI, tapi untuk instalasi biasa via Cloudflare Dashboard kamu bisa mengabaikannya.
 
 ### 7. Deploy Frontend Pages dari GitHub
 
@@ -635,11 +640,20 @@ NEXT_PUBLIC_API_BASE: URL Worker kamu
 
 Jangan isi output directory dengan `/`.
 
-**D1 Console error: `Requests without any query are not supported`**
-→ Query kosong. Buka `worker/schema.sql` di GitHub → klik **Raw** → copy semua → paste ke editor D1 Console → pastikan SQL terlihat → baru klik Run.
+**Bingung menjalankan SQL di D1 Console**
+→ Untuk instalasi terbaru, kamu **tidak perlu menjalankan SQL manual**. Pastikan Worker punya binding `DB`, lalu buka:
 
-**D1 Console error: `no such table: settings`**
-→ Kamu menjalankan bagian `INSERT INTO settings` sebelum tabel `settings` dibuat. Jalankan ulang seluruh isi `worker/schema.sql` dari paling atas.
+```txt
+https://URL-WORKER-KAMU/api/setup/status
+```
+
+Worker akan membuat tabel database otomatis.
+
+**D1 Console error: `Requests without any query are not supported`**
+→ Ini hanya terjadi kalau memakai cara manual. Artinya query kosong. Abaikan cara manual dan pakai auto-setup di atas.
+
+**D1 Console error: `no such table: settings` / `no such table: admins`**
+→ Buka `/api/setup/status` setelah Worker terbaru ter-deploy. Auto-setup akan membuat tabel yang belum ada.
 
 **Tabel D1 tidak terlihat di panel kiri**
 → Klik refresh. Kalau masih kosong, cek apakah ada filter aktif di panel kiri D1 Studio/Console. Hapus filter tersebut.
