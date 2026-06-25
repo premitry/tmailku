@@ -49,5 +49,5 @@ export function getTheme(): 'dark' | 'light' {
 }
 export function setTheme(t: 'dark' | 'light') {
 	localStorage.setItem('tmailku.theme', t)
-	document.documentElement.classList.toggle('light', t === 'light')
+	document.documentElement.setAttribute('data-theme', t)
 }
