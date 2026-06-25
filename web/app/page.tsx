@@ -176,7 +176,7 @@ export default function Home() {
 
 			<div className="glass p-[clamp(1rem,2.4vw,1.5rem)] mb-[clamp(1rem,2.5vw,1.5rem)] overflow-visible">
 				<div className="flex items-start justify-center gap-[clamp(0.9rem,2vw,1.35rem)] flex-wrap xl:flex-nowrap">
-					<div className="relative min-w-0 flex-1 w-full max-w-[760px]">
+					<div className="relative min-w-0 flex-1 w-full max-w-[820px]">
 						{customMode ? (
 							<div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-[clamp(0.85rem,2vw,1.15rem)]">
 								<div className="flex items-center justify-between mb-2">
@@ -205,18 +205,25 @@ export default function Home() {
 							</div>
 						) : (
 							<>
-								<button className="btn btn-ghost mono w-full justify-between min-w-0 min-h-[clamp(3.75rem,8vw,5.25rem)] px-[clamp(1rem,2.4vw,1.5rem)] text-[clamp(1.3rem,3.2vw,2.55rem)] leading-none font-extrabold" onClick={() => setShowSwitcher((s) => !s)} disabled={!active && loading}>
-									<span className="truncate block min-w-0">{activeLabel}</span> <ChevronDown size={18} className="shrink-0" />
+								<button className="email-selector-card mono" onClick={() => setShowSwitcher((s) => !s)} disabled={!active && loading} aria-expanded={showSwitcher}>
+									<span className="email-selector-text" title={activeLabel}>{activeLabel}</span>
+									<span className={"email-selector-chevron " + (showSwitcher ? 'rotate-180' : '')}><ChevronDown size={26} /></span>
 								</button>
 								{showSwitcher && (
-									<div className="popover mt-3 p-2 w-full max-h-[min(16rem,34vh)] overflow-y-auto">
+									<div className="email-dropdown" role="listbox">
 										{addresses.length === 0 ? (
-											<div className="px-3 py-2 text-sm opacity-60">Belum ada email tersimpan</div>
+											<div className="email-dropdown-empty">Belum ada email tersimpan</div>
 										) : addresses.map((a) => (
-											<div key={a.address} className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl hover:bg-black/10 dark:hover:bg-white/10">
-												<button className="mono text-[clamp(0.9rem,1.6vw,1.05rem)] text-left flex-1 truncate" onClick={() => { setActive(a.address); setActiveAddr(a.address); setShowSwitcher(false); setEmails([]); setInboxError('') }}>{a.address}</button>
-												<button className="shrink-0 opacity-70 hover:opacity-100" onClick={() => { removeAddress(a.address); setAddresses(getAddresses()); setActiveAddr(getActive()) }} aria-label="Hapus email tersimpan"><Trash2 size={16} /></button>
-											</div>
+											<button
+												key={a.address}
+												className={"email-dropdown-item mono " + (a.address === active ? 'is-active' : '')}
+												role="option"
+												aria-selected={a.address === active}
+												title={a.address}
+												onClick={() => { setActive(a.address); setActiveAddr(a.address); setShowSwitcher(false); setEmails([]); setInboxError('') }}
+											>
+												<span>{a.address}</span>
+											</button>
 										))}
 									</div>
 								)}
