@@ -82,14 +82,17 @@ publicRoutes.get("/domains", async (c) => {
 
 async function syncImapForAddress(env: Env, addr: string) {
   const row = await env.DB.prepare(
-    `SELECT a.address, d.domain, i.*
+    `SELECT a.address, d.domain, d.source AS domain_source, i.*
      FROM addresses a
      JOIN domains d ON d.id = a.domain_id
      JOIN imap_settings i ON i.domain_id = d.id
      WHERE a.address = ?
        AND i.enabled = 1
-       AND COALESCE(d.receive_imap_enabled, 0) = 1
-       AND COALESCE(d.is_enabled, CASE WHEN d.status = 'disabled' THEN 0 ELSE 1 END) = 1
+       AND (
+             COALESCE(d.receive_imap_enabled, CASE WHEN d.source IN ('imap','both') THEN 1 ELSE 0 END) = 1
+             OR d.source IN ('imap','both')
+           )
+       AND COALESCE(d.is_enabled, CASE WHEN COALESCE(d.status,'active') = 'disabled' THEN 0 ELSE 1 END) = 1
      LIMIT 1`,
   )
     .bind(addr)

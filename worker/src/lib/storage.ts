@@ -64,18 +64,36 @@ export async function storeEmail(
     );
     return null;
   }
+  // Periksa apakah source email cocok dengan konfigurasi domain.
+  // "none" atau kosong berarti domain belum dikonfigurasi — tetap izinkan agar
+  // email yang masuk sebelum setup selesai tidak hilang.
   const domainSource = address.domain_source || "routing";
-  if (source === "routing" && !["routing", "both"].includes(domainSource)) {
+  if (
+    domainSource !== "none" &&
+    domainSource !== "" &&
+    source === "routing" &&
+    !["routing", "both"].includes(domainSource)
+  ) {
     await addLog(
       env,
       "warn",
       "email",
-      `dropped (routing disabled) ${p.toAddr}`,
+      `dropped (routing disabled for domain source=${domainSource}) ${p.toAddr}`,
     );
     return null;
   }
-  if (source === "imap" && !["imap", "both"].includes(domainSource)) {
-    await addLog(env, "warn", "email", `dropped (imap disabled) ${p.toAddr}`);
+  if (
+    domainSource !== "none" &&
+    domainSource !== "" &&
+    source === "imap" &&
+    !["imap", "both"].includes(domainSource)
+  ) {
+    await addLog(
+      env,
+      "warn",
+      "email",
+      `dropped (imap disabled for domain source=${domainSource}) ${p.toAddr}`,
+    );
     return null;
   }
 

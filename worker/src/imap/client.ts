@@ -22,6 +22,9 @@ export class ImapClient {
 	private writer: WritableStreamDefaultWriter<Uint8Array>
 	private reader: ReadableStreamDefaultReader<Uint8Array>
 	private buffer = ''
+	// rawChunks menyimpan semua bytes yang diterima untuk keperluan fetch binary-safe
+	private rawChunks: Uint8Array[] = []
+	private rawBytesLen = 0
 	private tag = 0
 	private dec = new TextDecoder()
 	private encu = new TextEncoder()
@@ -55,6 +58,10 @@ export class ImapClient {
 			if (Date.now() > deadline) throw new Error('IMAP read timeout waiting for: ' + marker)
 			const { value, done } = await this.reader.read()
 			if (done) break
+			if (value) {
+				this.rawChunks.push(value)
+				this.rawBytesLen += value.byteLength
+			}
 			this.buffer += this.dec.decode(value, { stream: true })
 		}
 		const out = this.buffer
@@ -65,6 +72,8 @@ export class ImapClient {
 	private async command(cmd: string): Promise<string> {
 		const tag = 'A' + String(++this.tag).padStart(4, '0')
 		this.buffer = ''
+		this.rawChunks = []
+		this.rawBytesLen = 0
 		await this.send(tag + ' ' + cmd)
 		const deadline = Date.now() + 20000
 		const re = new RegExp('^' + tag + ' (OK|NO|BAD)', 'm')
@@ -72,11 +81,28 @@ export class ImapClient {
 			if (Date.now() > deadline) throw new Error('IMAP command timeout: ' + cmd)
 			const { value, done } = await this.reader.read()
 			if (done) break
+			if (value) {
+				this.rawChunks.push(value)
+				this.rawBytesLen += value.byteLength
+			}
 			this.buffer += this.dec.decode(value, { stream: true })
 		}
 		const m = this.buffer.match(re)
 		if (m && m[1] !== 'OK') throw new Error('IMAP ' + m[1] + ': ' + cmd)
 		return this.buffer
+	}
+
+	// Gabungkan rawChunks menjadi satu Uint8Array
+	private getRawBuffer(): Uint8Array {
+		if (this.rawChunks.length === 0) return new Uint8Array(0)
+		if (this.rawChunks.length === 1) return this.rawChunks[0]
+		const out = new Uint8Array(this.rawBytesLen)
+		let offset = 0
+		for (const chunk of this.rawChunks) {
+			out.set(chunk, offset)
+			offset += chunk.byteLength
+		}
+		return out
 	}
 
 	async login(): Promise<void> {
@@ -104,14 +130,26 @@ export class ImapClient {
 
 	async fetchMessage(uid: number): Promise<Uint8Array | null> {
 		const res = await this.command('UID FETCH ' + uid + ' (BODY.PEEK[])')
-		// Cari literal {size}\r\n<payload>
+		// Cari literal {size}\r\n<payload> di teks
 		const idx = res.indexOf('{')
 		if (idx === -1) return null
 		const sizeMatch = res.slice(idx).match(/^\{(\d+)\}\r\n/)
 		if (!sizeMatch) return null
 		const size = parseInt(sizeMatch[1], 10)
-		const start = idx + sizeMatch[0].length
-		const payload = res.slice(start, start + size)
+
+		// Hitung byte-offset dari raw buffer agar binary-safe (tidak rusak charset non-UTF8)
+		const headerText = res.slice(0, idx + sizeMatch[0].length)
+		const headerBytes = this.encu.encode(headerText).byteLength
+		const rawBuf = this.getRawBuffer()
+
+		// Jika raw buffer cukup, ambil langsung dari sana (binary-safe)
+		if (rawBuf.byteLength >= headerBytes + size) {
+			return rawBuf.slice(headerBytes, headerBytes + size)
+		}
+
+		// Fallback: re-encode dari string (UTF8-safe email saja)
+		const textStart = idx + sizeMatch[0].length
+		const payload = res.slice(textStart, textStart + size)
 		return this.encu.encode(payload)
 	}
 

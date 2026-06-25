@@ -8,12 +8,16 @@ import { now } from "../lib/util";
 
 export async function pollAllImap(env: Env): Promise<void> {
   const { results } = await env.DB.prepare(
-    `SELECT i.*, i.host AS hostname, i.password_encrypted AS password, (i.polling_interval_minutes * 60) AS poll_interval, d.domain
+    `SELECT i.*, i.host AS hostname, i.password_encrypted AS password, (i.polling_interval_minutes * 60) AS poll_interval, d.domain,
+            d.source AS domain_source
 		 FROM imap_settings i
 		 JOIN domains d ON d.id = i.domain_id
 		 WHERE i.enabled = 1
-		   AND COALESCE(d.receive_imap_enabled, 0) = 1
-		   AND COALESCE(d.is_enabled, CASE WHEN d.status = 'disabled' THEN 0 ELSE 1 END) = 1`,
+		   AND (
+		         COALESCE(d.receive_imap_enabled, CASE WHEN d.source IN ('imap','both') THEN 1 ELSE 0 END) = 1
+		         OR d.source IN ('imap','both')
+		       )
+		   AND COALESCE(d.is_enabled, CASE WHEN COALESCE(d.status,'active') = 'disabled' THEN 0 ELSE 1 END) = 1`,
   )
     .all<any>()
     .catch(() => ({ results: [] as any[] }));
@@ -53,16 +57,29 @@ export async function pollAccount(env: Env, acc: any): Promise<number> {
   try {
     await client.login();
     await client.selectFolder();
-    const sinceUid = acc.force ? Math.max(0, Number(acc.last_uid || 0) - 50) : Number(acc.last_uid || 0);
+    // force=true (manual refresh user): mundur 100 UID agar tidak lewatkan email baru
+    // force=true dengan last_uid=0: fetch semua (baru pertama kali sync)
+    const lastUid = Number(acc.last_uid || 0);
+    const sinceUid = acc.force
+      ? (lastUid > 100 ? lastUid - 100 : 0)
+      : lastUid;
     const uids = await client.searchSince(sinceUid);
-    let maxUid = acc.last_uid || 0;
-    for (const uid of uids.slice(0, 25)) {
+    let maxUid = lastUid;
+    // Batasi 50 per run agar tidak timeout di Worker (30s limit)
+    for (const uid of uids.slice(0, 50)) {
       const raw = await client.fetchMessage(uid);
       if (raw) {
         const parsed = await parseRaw(raw, acc.domain);
         if (parsed) {
           const stored = await storeEmail(env, "imap", parsed);
           if (stored) count++;
+        } else {
+          await addLog(
+            env,
+            "warn",
+            "imap",
+            "uid " + uid + " parse gagal (recipient tidak dikenali) @ " + (acc.domain || acc.username),
+          );
         }
       }
       if (uid > maxUid) maxUid = uid;
@@ -72,13 +89,12 @@ export async function pollAccount(env: Env, acc: any): Promise<number> {
     )
       .bind(maxUid, now(), "success", now(), acc.id)
       .run();
-    if (count > 0)
-      await addLog(
-        env,
-        "info",
-        "imap",
-        "sync " + (acc.domain || acc.username) + ": " + count + " email baru",
-      );
+    await addLog(
+      env,
+      "info",
+      "imap",
+      "sync " + (acc.domain || acc.username) + ": diperiksa=" + uids.length + " disimpan=" + count + (acc.force ? " [manual]" : ""),
+    );
   } finally {
     await client.logout();
   }
