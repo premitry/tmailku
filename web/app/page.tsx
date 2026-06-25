@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Copy, RefreshCw, Trash2, Plus, Mail, ChevronDown, Check, ShieldCheck, Zap, Clock, Pencil, X } from 'lucide-react'
 import { api, type EmailSummary, type Branding } from '@/lib/api'
 import { getAddresses, saveAddress, removeAddress, getActive, setActive, type SavedAddress } from '@/lib/store'
@@ -21,17 +21,32 @@ export default function Home() {
 	const [customLocal, setCustomLocal] = useState('')
 	const [customDomain, setCustomDomain] = useState('')
 	const [booted, setBooted] = useState(false)
+	const [inboxError, setInboxError] = useState('')
+	const [inboxLoading, setInboxLoading] = useState(false)
+	const [lastUpdated, setLastUpdated] = useState<number | null>(null)
+	const [liveConnected, setLiveConnected] = useState(false)
+	const latestRequest = useRef(0)
 
-	const refresh = useCallback(async (addr: string, manual = false) => {
+	const refresh = useCallback(async (addr: string, manual = false, sync = false) => {
 		if (!addr) return
+		const requestId = ++latestRequest.current
 		if (manual) setRefreshing(true)
+		if (manual) setInboxLoading(true)
+		setInboxError('')
 		try {
-			const { emails } = await api.inbox(addr, manual)
-			setEmails(emails)
+			// manual/sync = request ulang ke server + paksa sync IMAP bila domain memakai IMAP.
+			const { emails: nextEmails } = await api.inbox(addr, manual || sync)
+			if (requestId !== latestRequest.current) return
+			setEmails(nextEmails)
+			setLastUpdated(Date.now())
 		} catch (e: any) {
-			if (manual) alert(e?.message || 'Gagal refresh inbox')
+			if (requestId !== latestRequest.current) return
+			setInboxError(e?.message || 'Gagal mengambil email, coba refresh kembali.')
 		} finally {
-			if (manual) setRefreshing(false)
+			if (requestId === latestRequest.current) {
+				if (manual) setRefreshing(false)
+				setInboxLoading(false)
+			}
 		}
 	}, [])
 
@@ -47,7 +62,8 @@ export default function Home() {
 			setCustomLocal('')
 			setShowSwitcher(false)
 			setEmails([])
-			await refresh(r.address)
+			setInboxError('')
+			await refresh(r.address, false, true)
 		} catch (e: any) {
 			alert(e.message)
 		} finally {
@@ -74,12 +90,32 @@ export default function Home() {
 
 	useEffect(() => {
 		if (!active) return
-		refresh(active)
-		const es = new EventSource((process.env.NEXT_PUBLIC_API_BASE || '') + '/api/stream/' + encodeURIComponent(active))
-		es.addEventListener('new', () => refresh(active))
-		const iv = setInterval(() => refresh(active), 15000)
+		setEmails([])
+		setInboxError('')
+		setLiveConnected(false)
+		setInboxLoading(true)
+		refresh(active, false, true)
+
+		let es: EventSource | null = null
+		try {
+			es = new EventSource((process.env.NEXT_PUBLIC_API_BASE || '') + '/api/stream/' + encodeURIComponent(active))
+			es.addEventListener('hello', () => setLiveConnected(true))
+			es.addEventListener('new', () => refresh(active))
+			es.onerror = () => setLiveConnected(false)
+		} catch {
+			setLiveConnected(false)
+		}
+
+		// Polling fallback: request ulang ke server tiap beberapa detik.
+		// Setiap beberapa cycle ikut paksa sync IMAP agar inbox IMAP juga auto update tanpa F5.
+		let tick = 0
+		const iv = setInterval(() => {
+			tick += 1
+			refresh(active, false, tick % 3 === 0)
+		}, 5000)
+
 		return () => {
-			es.close()
+			es?.close()
 			clearInterval(iv)
 		}
 	}, [active, refresh])
@@ -109,6 +145,7 @@ export default function Home() {
 		setAddresses(list)
 		setActiveAddr(next)
 		setEmails([])
+		setInboxError('')
 	}
 
 	const activeDomain = domains.length > 1 ? customDomain : (domains[0] || '')
@@ -177,7 +214,7 @@ export default function Home() {
 											<div className="px-3 py-2 text-sm opacity-60">Belum ada email tersimpan</div>
 										) : addresses.map((a) => (
 											<div key={a.address} className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl hover:bg-black/10 dark:hover:bg-white/10">
-												<button className="mono text-[clamp(0.9rem,1.6vw,1.05rem)] text-left flex-1 truncate" onClick={() => { setActive(a.address); setActiveAddr(a.address); setShowSwitcher(false); setEmails([]) }}>{a.address}</button>
+												<button className="mono text-[clamp(0.9rem,1.6vw,1.05rem)] text-left flex-1 truncate" onClick={() => { setActive(a.address); setActiveAddr(a.address); setShowSwitcher(false); setEmails([]); setInboxError('') }}>{a.address}</button>
 												<button className="shrink-0 opacity-70 hover:opacity-100" onClick={() => { removeAddress(a.address); setAddresses(getAddresses()); setActiveAddr(getActive()) }} aria-label="Hapus email tersimpan"><Trash2 size={16} /></button>
 											</div>
 										))}
@@ -198,10 +235,21 @@ export default function Home() {
 
 			<div className="glass p-[clamp(1rem,2.4vw,1.5rem)] min-h-[clamp(360px,50vh,640px)]">
 				<div className="flex items-center justify-between mb-4">
-					<div className="flex items-center gap-2 font-semibold"><Mail size={18} /> Kotak Masuk <span className="pill">{emails.length}</span></div>
-					<span className="pill"><span className="live-dot w-2 h-2 rounded-full bg-secondary inline-block" /> Live</span>
+					<div>
+						<div className="flex items-center gap-2 font-semibold"><Mail size={18} /> Kotak Masuk <span className="pill">{emails.length}</span></div>
+						{lastUpdated && <div className="text-xs opacity-50 mt-1">Update terakhir: {new Date(lastUpdated).toLocaleTimeString('id-ID')}</div>}
+					</div>
+					<span className="pill"><span className={"live-dot w-2 h-2 rounded-full inline-block " + (inboxError ? 'bg-red-400' : liveConnected ? 'bg-secondary' : 'bg-yellow-400')} /> {inboxError ? 'Error' : liveConnected ? 'Live' : 'Polling'}</span>
 				</div>
-				{emails.length === 0 ? (
+				{inboxError && (
+					<div className="mb-3 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3">
+						<span>{inboxError}</span>
+						<button className="btn btn-ghost shrink-0" onClick={() => refresh(active, true, true)} disabled={!active || refreshing}>Coba lagi</button>
+					</div>
+				)}
+				{inboxLoading && emails.length === 0 ? (
+					<div className="text-center opacity-70 min-h-[clamp(260px,38vh,500px)] flex flex-col items-center justify-center"><RefreshCw size={44} className="mx-auto mb-3 animate-spin" /> Mengambil email terbaru...</div>
+				) : emails.length === 0 ? (
 					<div className="text-center opacity-60 min-h-[clamp(260px,38vh,500px)] flex flex-col items-center justify-center"><Mail size={44} className="mx-auto mb-3" /> Kotak masuk kosong</div>
 				) : (
 					<div className="space-y-2 max-h-[clamp(300px,44vh,560px)] overflow-y-auto pr-1">

@@ -1,15 +1,26 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
 async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
-  const res = await fetch(API_BASE + path, {
-    ...opts,
-    credentials: "include",
-    headers: { "content-type": "application/json", ...(opts.headers || {}) },
-  });
+  if (!API_BASE && path.startsWith("/api")) {
+    throw new Error("URL API belum disetel. Cek NEXT_PUBLIC_API_BASE di Cloudflare Pages.");
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(API_BASE + path, {
+      ...opts,
+      credentials: "include",
+      headers: { "content-type": "application/json", ...(opts.headers || {}) },
+      cache: "no-store",
+    });
+  } catch {
+    throw new Error("Gagal mengambil email, coba refresh kembali.");
+  }
+
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(
-      (data as any).error || "request gagal (" + res.status + ")",
+      (data as any).error || "Gagal mengambil email, coba refresh kembali. (" + res.status + ")",
     );
   }
   return res.json() as Promise<T>;
